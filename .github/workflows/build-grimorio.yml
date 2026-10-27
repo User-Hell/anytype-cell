@@ -1,0 +1,59 @@
+name: Build Grimorio Android
+
+on:
+  push:
+    branches:
+      - rpg-experiment
+    paths:
+      - "**.gradle"
+      - "**.gradle.kts"
+      - "**.kt"
+      - "**.xml"
+      - "**.toml"
+      - "gradle.properties"
+      - "gradle/**"
+      - ".github/workflows/build-grimorio.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+
+      - name: Configure private Anytype dependency access
+        env:
+          PACKAGES_USERNAME: ${{ secrets.ANYTYPE_PACKAGES_USERNAME }}
+          PACKAGES_TOKEN: ${{ secrets.ANYTYPE_PACKAGES_TOKEN }}
+        run: |
+          if [ -z "$PACKAGES_USERNAME" ] || [ -z "$PACKAGES_TOKEN" ]; then
+            echo "::error::Configure repository secrets ANYTYPE_PACKAGES_USERNAME and ANYTYPE_PACKAGES_TOKEN to access anyproto/anytype-heart."
+            exit 1
+          fi
+          printf 'gpr.usr=%s\ngpr.key=%s\n' "$PACKAGES_USERNAME" "$PACKAGES_TOKEN" > github.properties
+          printf 'amplitude.debug="disabled"\namplitude.release="disabled"\nsentry_dsn=""\n' > apikeys.properties
+
+      - name: Make Gradle executable
+        run: chmod +x ./gradlew
+
+      - name: Build debug APK
+        run: ./gradlew :app:assembleDebug --no-daemon --stacktrace -Pcom.anytype.ci=true
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Grimorio-Anytype-APK
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 14
